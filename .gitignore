@@ -1,0 +1,37 @@
+# ---------------------------------------------------------------
+# Secrets and personal data. Never commit these.
+# ---------------------------------------------------------------
+.env
+
+# saved settings, which can hold an API key
+settings.json
+
+# tokens for phones you have paired
+.devices.json
+
+# your own notes, syllabus, resume, profile
+context/
+
+# ---------------------------------------------------------------
+# Local environment
+# ---------------------------------------------------------------
+.venv/
+__pycache__/
+*.pyc
+models/
+
+# ---------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+*.apk
+
+# ---------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------
+.idea/
+.DS_Store
+Thumbs.db

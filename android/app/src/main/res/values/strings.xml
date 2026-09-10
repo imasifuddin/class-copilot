@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">class-copilot</string>
+    <string name="setup_title">Connect to your laptop</string>
+    <string name="setup_blurb">Start class-copilot on your laptop. Type the address it prints on the \"on your phone\" line, and the 6-digit PIN. Easier: scan the QR code in the terminal with your camera and both are filled in for you.</string>
+    <string name="hint_host">e.g.  10.0.0.5:8756</string>
+    <string name="hint_pin">000000</string>
+    <string name="label_host">Laptop address</string>
+    <string name="label_pin">Pairing PIN</string>
+    <string name="connect">Connect</string>
+    <string name="connecting">Connecting…</string>
+</resources>

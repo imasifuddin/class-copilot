@@ -1,0 +1,90 @@
+# class-copilot configuration
+# Everything here is hot-read at startup. Restart the app after editing.
+
+[audio]
+# "loopback" = capture what your speakers are playing (you teach from THIS pc).
+#              Hears the students only, never your own voice. Cleanest audio.
+# "mic"      = capture this pc's microphone (you teach from your PHONE on
+#              speaker, laptop listening nearby). Hears the whole room.
+# "both"     = loopback + microphone mixed. Hears the students on the call AND
+#              you and anyone in the room.
+# "phone"    = this machine does not listen at all. Your Android phone streams
+#              its microphone here over wifi. Use this when the class runs on a
+#              DIFFERENT computer and you keep the phone next to it.
+mode = "both"
+
+# Substring of the device name, e.g. "Speakers" or "Realtek". Empty = default.
+device = ""
+
+# Voice-activity tuning. Raise silence_threshold if it triggers on room noise,
+# lower it if quiet students get missed.
+silence_threshold = 0.010
+min_speech_ms = 600
+max_utterance_ms = 20000
+hangover_ms = 700
+
+[stt]
+# "local" runs faster-whisper here: offline, free, no data leaves the machine.
+# "cloud" sends each clip to your AI provider instead. Much better on noisy room
+# audio, and it means the server needs almost no CPU -- which is what makes it
+# possible to host this somewhere free. Uses the same API key.
+engine = "local"
+cloud_model = "whisper-large-v3-turbo"
+# tiny.en / base.en / small.en / medium.en  (bigger = better + slower)
+# Measured here on 11s of clean speech, all word-perfect:
+#   tiny.en 0.5s   base.en 1.0s   small.en 4.1s
+# base.en is the best balance; move up only if it mishears real room audio.
+model = "base.en"
+device = "cpu"           # "cuda" if you have an NVIDIA GPU
+compute_type = "int8"    # "float16" for cuda
+language = "en"
+
+[trigger]
+# "auto"   = answer automatically when someone finishes asking something
+# "manual" = never auto-answer; you tap a line or type to ask
+mode = "auto"
+min_words = 3
+cooldown_s = 5
+# How long the room must stay quiet before a question counts as finished.
+# Everything said before that silence is joined into ONE question, so a student
+# who pauses mid-sentence and then adds more still gets a single answer.
+# Raise it for slow speakers, lower it for a snappier response.
+end_of_turn_s = 1.6
+# Safety valve: if someone talks non-stop without a real pause, close the turn
+# after this many words rather than letting it grow forever.
+max_turn_words = 120
+# Let the model decide whether a turn is really a doubt. This is what catches
+# questions with no "sir I have a doubt" preamble. Costs one tiny extra call
+# per turn; set false to rely on keywords alone.
+smart = true
+
+[llm]
+# Everything below can also be changed live from the app's settings screen,
+# which saves to settings.json and overrides this file.
+# providers: anthropic | openai | gemini | groq | openrouter | ollama | custom
+provider = "anthropic"
+model = "claude-opus-5"
+api_key = ""                  # blank = read from .env / environment
+base_url = ""                 # blank = the provider default; set for "custom"
+effort = "low"                # low | medium | high  (low = fastest, fine for class Q&A)
+fast_mode = false             # Opus 5 fast mode: ~2.5x faster output, premium price
+max_tokens = 2000
+context_turns = 4             # how many previous Q/A pairs Claude remembers
+# How the answer is written:
+#   "speak"     - the exact words to say, ready to read out loud (default)
+#   "reference" - a one-line answer plus bullets and code, to paraphrase
+#   "both"      - the script first, then the bullets
+style = "speak"
+answer_language = "English"   # e.g. "English", "Hinglish (Roman script)"
+# Anything extra you want the assistant to know about your class:
+persona_extra = "The class covers programming, computer science fundamentals, and blockchain."
+
+[server]
+# 0.0.0.0 lets your phone reach this laptop over wifi. Use "127.0.0.1" to keep
+# it on this machine only (or pass --local-only).
+host = "0.0.0.0"
+port = 8756
+open_browser = true
+# Phones must enter the 6-digit PIN printed at startup. Leave this on when you
+# are on shared wifi -- otherwise anyone on the network can read the answers.
+require_pin = true
