@@ -174,18 +174,27 @@ def build_app(hub, auth) -> FastAPI:
 
     @app.post("/api/audio")
     async def ingest_audio(request: Request):
-        """One long chunked POST of 16 kHz mono PCM16 from the Android app."""
+        """A short post of 16 kHz mono PCM16 from the Android app.
+
+        Short and complete, rather than one long stream: hosting proxies buffer
+        a streaming request body, which delayed the first audio by ~19s on
+        Render. Each post is announced by `x-cc-state`.
+        """
         require(request)
-        device = request.headers.get("x-cc-device", "phone")
-        hub.remote.open(device, request.headers.get("x-cc-intent", ""))
-        try:
-            async for chunk in request.stream():
-                hub.remote.feed(chunk)
-        except Exception as exc:
-            log.info("phone audio stream ended: %s", exc)
-        finally:
-            hub.remote.close()
-        return {"ok": True, "bytes": hub.remote.bytes_in}
+        state = request.headers.get("x-cc-state", "chunk").lower()
+        if state == "start":
+            hub.remote.begin(request.headers.get("x-cc-device", "phone"),
+                             request.headers.get("x-cc-intent", ""))
+
+        body = await request.body()
+        if body:
+            hub.remote.feed(body)
+
+        if state == "stop":
+            hub.remote.end()
+
+        await hub.broadcast(hub.status())      # move the dot immediately
+        return {"ok": True, "held": hub.remote.held, "bytes": len(body)}
 
     # ---------- live ----------
 

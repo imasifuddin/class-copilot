@@ -175,7 +175,7 @@ class Hub:
 
     def holding_mic(self) -> bool:
         """True while you are deliberately holding the microphone open."""
-        return bool(self.remote and self.remote.force and self.remote.streaming)
+        return bool(self.remote and self.remote.held)
 
     def _turn_is_over(self) -> bool:
         """Has the speaker finished, and has everything they said come back?"""

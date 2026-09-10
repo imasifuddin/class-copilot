@@ -32,6 +32,9 @@ public class MicService extends Service {
     private static final String CHANNEL = "mic";
     private static final int NOTE_ID = 42;
     private static final int RATE = 16000;
+    /** 0.4 s of audio per post: small enough to feel instant, big
+     *  enough that the request overhead stays negligible. */
+    private static final int CHUNK_BYTES = RATE * 2 * 2 / 5;
 
     public static final String ACTION_STOP = "dev.classcopilot.STOP_MIC";
     public static volatile boolean running = false;
@@ -87,7 +90,14 @@ public class MicService extends Service {
                 .build();
     }
 
-    /** Record and upload, reconnecting for as long as the service lives. */
+    /**
+     * Record, and post the audio in short pieces.
+     *
+     * One long streaming POST is the obvious design and it works on a LAN, but
+     * hosting proxies buffer a streaming request body: on Render the server did
+     * not see the first audio for nearly twenty seconds. Short complete posts
+     * arrive immediately everywhere.
+     */
     private void pump() {
         SharedPreferences prefs = getSharedPreferences(SetupActivity.PREFS, MODE_PRIVATE);
         String base = prefs.getString(SetupActivity.KEY_BASE, null);
@@ -102,67 +112,84 @@ public class MicService extends Service {
         if (minBuf <= 0) {
             minBuf = RATE * 2;
         }
-        int bufBytes = Math.max(minBuf, RATE);      // ~0.5 s of headroom
 
-        while (!stopping) {
-            AudioRecord rec = null;
-            HttpURLConnection conn = null;
-            try {
-                rec = new AudioRecord(
-                        MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                        RATE, AudioFormat.CHANNEL_IN_MONO,
-                        AudioFormat.ENCODING_PCM_16BIT, bufBytes);
-                if (rec.getState() != AudioRecord.STATE_INITIALIZED) {
-                    throw new IllegalStateException("microphone unavailable");
+        AudioRecord rec = null;
+        boolean first = true;
+        try {
+            rec = new AudioRecord(
+                    MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                    RATE, AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT, Math.max(minBuf, RATE));
+            if (rec.getState() != AudioRecord.STATE_INITIALIZED) {
+                throw new IllegalStateException("microphone unavailable");
+            }
+            rec.startRecording();
+
+            // Tell the server immediately, so the dot turns green on the first
+            // round trip instead of waiting for audio to accumulate.
+            post(base, token, new byte[0], 0, "start");
+            first = false;
+
+            byte[] buf = new byte[CHUNK_BYTES];
+            int filled = 0;
+            while (!stopping) {
+                int n = rec.read(buf, filled, buf.length - filled);
+                if (n < 0) {
+                    throw new IllegalStateException("microphone read failed: " + n);
                 }
-
-                conn = (HttpURLConnection) new URL(base + "/api/audio").openConnection();
-                conn.setRequestMethod("POST");
-                conn.setDoOutput(true);
-                conn.setUseCaches(false);
-                conn.setConnectTimeout(6000);
-                conn.setChunkedStreamingMode(4096);   // stream, never buffer it all
-                conn.setRequestProperty("content-type", "application/octet-stream");
-                conn.setRequestProperty("x-cc-token", token);
-                conn.setRequestProperty("x-cc-device", Build.MODEL);
-                conn.setRequestProperty("x-cc-intent", "ask");
-
-                OutputStream out = conn.getOutputStream();
-                rec.startRecording();
-
-                byte[] buf = new byte[3200];          // 100 ms per write
-                while (!stopping) {
-                    int n = rec.read(buf, 0, buf.length);
-                    if (n > 0) {
-                        out.write(buf, 0, n);
-                        out.flush();
-                    } else if (n < 0) {
-                        throw new IllegalStateException("microphone read failed: " + n);
-                    }
-                }
-                out.close();
-                conn.getResponseCode();
-            } catch (Exception e) {
-                Log.w(TAG, "stream dropped: " + e);
-            } finally {
-                if (rec != null) {
-                    try {
-                        rec.stop();
-                    } catch (Exception ignored) {
-                    }
-                    rec.release();
-                }
-                if (conn != null) {
-                    conn.disconnect();
+                filled += n;
+                if (filled >= buf.length) {
+                    post(base, token, buf, filled, "chunk");
+                    filled = 0;
                 }
             }
-
-            if (!stopping) {
+            if (filled > 0) {
+                post(base, token, buf, filled, "chunk");
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "recording stopped: " + e);
+        } finally {
+            if (rec != null) {
                 try {
-                    Thread.sleep(1500);               // wifi hiccup; try again
-                } catch (InterruptedException e) {
-                    break;
+                    rec.stop();
+                } catch (Exception ignored) {
                 }
+                rec.release();
+            }
+            if (!first) {
+                post(base, token, new byte[0], 0, "stop");   // close the turn
+            }
+        }
+        stopSelf();
+    }
+
+    /** One short post. Failures are logged and skipped; audio keeps flowing. */
+    private void post(String base, String token, byte[] data, int length, String state) {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(base + "/api/audio").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setUseCaches(false);
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(15000);
+            conn.setFixedLengthStreamingMode(length);
+            conn.setRequestProperty("content-type", "application/octet-stream");
+            conn.setRequestProperty("x-cc-token", token);
+            conn.setRequestProperty("x-cc-device", Build.MODEL);
+            conn.setRequestProperty("x-cc-intent", "ask");
+            conn.setRequestProperty("x-cc-state", state);
+            OutputStream out = conn.getOutputStream();
+            if (length > 0) {
+                out.write(data, 0, length);
+            }
+            out.close();
+            conn.getResponseCode();
+        } catch (Exception e) {
+            Log.w(TAG, "post(" + state + ") failed: " + e);
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
             }
         }
     }
