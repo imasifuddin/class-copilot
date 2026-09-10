@@ -1018,6 +1018,9 @@ if (native){
   $("#btnMic").onclick = () => {
     micOn = !micOn;
     heardWhileHolding = 0;
+    // Tell the server over the websocket straight away. The audio posts follow,
+    // but the session no longer depends on one of them arriving.
+    send({type: "mic", on: micOn});
     try { native.setMic(micOn); } catch(e){}
     paintMic();
     if (micOn) showTab("answers");
@@ -1027,7 +1030,12 @@ if (native){
   setInterval(() => {
     try {
       const real = native.micOn();
-      if (real !== micOn){ micOn = real; heardWhileHolding = 0; paintMic(); }
+      if (real !== micOn){
+        micOn = real;
+        heardWhileHolding = 0;
+        send({type: "mic", on: micOn});   // the notification's Stop button too
+        paintMic();
+      }
     } catch(e){}
   }, 1500);
 }

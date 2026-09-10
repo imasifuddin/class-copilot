@@ -24,7 +24,7 @@ log = logging.getLogger("remote-audio")
 
 BYTES_PER_SAMPLE = 2          # 16-bit little-endian
 FULL_SCALE = 32768.0
-STALE_AFTER = 20.0            # a session with no posts this long is abandoned
+STALE_AFTER = 8.0             # a session with no posts this long is abandoned
 FLUSH_SILENCE = 0.9           # seconds of quiet appended when you tap stop
 
 
@@ -69,7 +69,7 @@ class RemoteAudio:
 
     def end(self):
         if not self.open_session:
-            return
+            return          # already closed; a duplicate stop is harmless
         self.open_session = False
         self.last_seen = time.time()
         # Close off a half-finished sentence rather than leaving it hanging.

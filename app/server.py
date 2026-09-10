@@ -241,6 +241,17 @@ async def _dispatch(hub, msg: dict):
         hub.cfg.trigger.mode = "manual" if msg.get("value") == "manual" else "auto"
         settings_store.update(hub.cfg, {"trigger": {"mode": hub.cfg.trigger.mode}})
         await hub.broadcast(hub.status())
+    elif kind == "mic":
+        # The phone says it started or stopped listening. This arrives over the
+        # already-open websocket, so it does not depend on an audio post making
+        # it through -- a dropped stop used to leave the session open until it
+        # went stale, blocking every later question.
+        if hub.remote is not None:
+            if msg.get("on"):
+                hub.remote.begin(str(msg.get("device", "phone"))[:40], "ask")
+            else:
+                hub.remote.end()
+        await hub.broadcast(hub.status())
     elif kind == "ping":
         pass          # traffic is the point; a free host counts it as activity
     elif kind == "clear":
