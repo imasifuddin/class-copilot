@@ -1,0 +1,19 @@
+# Dependencies for running the server somewhere hosted.
+#
+# Deliberately excludes faster-whisper, sounddevice and soundcard: a hosted box
+# has no microphone and little CPU, so transcription goes to the provider's
+# Whisper instead (CC_STT_ENGINE=cloud). That keeps the image small enough to
+# run on a free tier.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+numpy>=1.24
+python-dotenv>=1.0
+qrcode>=7.4
+
+# providers
+openai>=1.30
+anthropic>=0.40
+
+# reading the material you upload
+pypdf>=4.0
+python-docx>=1.1

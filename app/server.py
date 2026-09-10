@@ -232,6 +232,8 @@ async def _dispatch(hub, msg: dict):
         hub.cfg.trigger.mode = "manual" if msg.get("value") == "manual" else "auto"
         settings_store.update(hub.cfg, {"trigger": {"mode": hub.cfg.trigger.mode}})
         await hub.broadcast(hub.status())
+    elif kind == "ping":
+        pass          # traffic is the point; a free host counts it as activity
     elif kind == "clear":
         hub.lines.clear()
         hub.cards.clear()

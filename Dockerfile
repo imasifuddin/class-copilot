@@ -1,37 +1,36 @@
-# Hosting this somewhere free.
+# Runs the server somewhere hosted, so the phone works with your laptop off.
 #
-# The image deliberately does NOT install faster-whisper: a hosted box has no
-# microphone and little CPU, so transcription goes to the provider's Whisper
-# instead ([stt] engine = "cloud"). That keeps the image small and lets it run
-# in a few hundred megabytes of RAM.
+# No faster-whisper, no audio device libraries: a hosted box has no microphone
+# and little CPU, so the phone app is the microphone and transcription goes to
+# your provider's Whisper. That keeps this small enough for a free tier.
 FROM python:3.11-slim
 
+# A hosted server listens to nothing itself, and must not try to load a local
+# speech model. Both are read by app/config.py.
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PORT=7860
+    PORT=7860 \
+    CC_AUDIO_MODE=phone \
+    CC_STT_ENGINE=cloud \
+    HOME=/app
+
+# Which AI answers. config.toml defaults to Claude, but your saved choice lives
+# in settings.json, which is deliberately never deployed -- so state it here.
+# Override either as a Space variable to use a different provider.
+ENV CC_LLM_PROVIDER=groq \
+    CC_LLM_MODEL=openai/gpt-oss-120b
 
 WORKDIR /app
 
-# Only what a cloud-transcribing server needs -- no audio device libraries.
-RUN pip install --no-cache-dir \
-        "fastapi>=0.110" "uvicorn[standard]>=0.29" \
-        "openai>=1.30" "anthropic>=0.40" \
-        "numpy>=1.24" "python-dotenv>=1.0" \
-        "qrcode>=7.4" "pypdf>=4.0" "python-docx>=1.1"
+COPY requirements-server.txt ./
+RUN pip install --no-cache-dir -r requirements-server.txt
 
 COPY app/ ./app/
 COPY config.toml ./config.toml
 
-# A hosted server listens to nothing itself; the phone app is the microphone.
-RUN python - <<'PY'
-import pathlib, re
-p = pathlib.Path("config.toml")
-s = p.read_text(encoding="utf-8")
-s = re.sub(r'(?m)^mode = "(loopback|mic|both|phone)"', 'mode = "phone"', s, count=1)
-s = re.sub(r'(?m)^engine = "(local|cloud)"', 'engine = "cloud"', s, count=1)
-p.write_text(s, encoding="utf-8")
-print("container config: audio=phone, speech=cloud")
-PY
+# Hugging Face Spaces runs the container as a non-root user, so anything the
+# app writes (settings.json, .devices.json, context/) has to be writable.
+RUN mkdir -p /app/context && chmod -R 777 /app
 
 EXPOSE 7860
 CMD ["python", "-m", "app.main", "--no-browser"]

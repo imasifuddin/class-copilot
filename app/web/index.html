@@ -557,6 +557,8 @@ function showTab(which){
 /* ---------- socket ---------- */
 function send(o){ if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 
+let keepAlive = null;
+
 function connect(){
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(proto + "://" + location.host + "/ws?token=" + encodeURIComponent(token.get()));
@@ -572,6 +574,10 @@ function connect(){
       }
       unread = 0; paintBadge();
       status(m.status);
+      // Free hosts sleep after ~15 minutes without inbound traffic, which would
+      // drop the connection mid-class. A ping every minute is enough.
+      clearInterval(keepAlive);
+      keepAlive = setInterval(() => send({type: "ping"}), 60000);
     }
     else if (m.type === "line")   addLine(m);
     else if (m.type === "card")   addCard(m);
@@ -587,6 +593,7 @@ function connect(){
     }
   };
   ws.onclose = () => {
+    clearInterval(keepAlive);
     $("#dot").classList.remove("on");
     $("#meta").textContent = "disconnected - retrying";
     setTimeout(() => { if (!$("#pair").classList.contains("show")) connect(); }, 1500);

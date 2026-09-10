@@ -1,0 +1,38 @@
+# Deploys the server to Render's free plan.
+#
+# Render reads this when you point it at the repo, so the only things left to
+# fill in are the two secrets marked `sync: false`.
+#
+# Free plan notes that shape this file:
+#   - the filesystem is thrown away on restart, so device pairing is signed
+#     with CC_PIN rather than stored (see app/auth.py)
+#   - the service sleeps after 15 minutes without traffic; the page pings once
+#     a minute to hold it open while you are teaching
+services:
+  - type: web
+    name: class-copilot
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    autoDeployTrigger: commit
+    envVars:
+      # Asked for when you create the service. Never stored in the repo.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CC_PIN
+        sync: false
+
+      # A hosted box has no microphone and little CPU: the phone is the
+      # microphone, and transcription goes to the provider's Whisper.
+      - key: CC_AUDIO_MODE
+        value: phone
+      - key: CC_STT_ENGINE
+        value: cloud
+
+      # config.toml defaults to Claude; settings.json is never deployed, so the
+      # provider has to be stated here.
+      - key: CC_LLM_PROVIDER
+        value: groq
+      - key: CC_LLM_MODEL
+        value: openai/gpt-oss-120b

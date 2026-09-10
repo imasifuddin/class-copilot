@@ -1,0 +1,13 @@
+# Keep the build context small and free of anything private.
+.venv/
+__pycache__/
+*.pyc
+.git/
+.env
+settings.json
+.devices.json
+context/
+android/
+models/
+*.apk
+README.md

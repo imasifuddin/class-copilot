@@ -7,6 +7,9 @@ this -- you should not have to type a PIN into your own machine.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -37,6 +40,42 @@ class Auth:
             self.fixed = False
         self._tokens: dict[str, dict] = self._load()
         self._fails: dict[str, list] = {}
+        self._secret = self._server_secret()
+
+    def _server_secret(self) -> bytes:
+        """Key for signing device tokens.
+
+        A hosted box usually has a throwaway filesystem, so anything written to
+        disk vanishes on the next restart and every phone would have to pair
+        again. Deriving the key from CC_PIN (or CC_SECRET) makes tokens survive
+        restarts. On a laptop the disk is real, so a random key is kept there.
+        """
+        explicit = os.getenv("CC_SECRET") or ""
+        if explicit:
+            return hashlib.sha256(explicit.encode()).digest()
+        if self.fixed:
+            return hashlib.sha256(f"class-copilot:{self.pin}".encode()).digest()
+        seed = self._tokens.get("_secret")
+        if not seed:
+            seed = secrets.token_urlsafe(32)
+            self._tokens["_secret"] = seed
+            self._save()
+        return hashlib.sha256(seed.encode()).digest()
+
+    # ---------- signed, stateless tokens ----------
+
+    def _sign(self, name: str) -> str:
+        raw = base64.urlsafe_b64encode(name.encode()).decode().rstrip("=")
+        sig = hmac.new(self._secret, raw.encode(), hashlib.sha256).hexdigest()[:32]
+        return f"{raw}.{sig}"
+
+    def _signature_ok(self, token: str) -> bool:
+        try:
+            raw, sig = token.rsplit(".", 1)
+        except ValueError:
+            return False
+        expect = hmac.new(self._secret, raw.encode(), hashlib.sha256).hexdigest()[:32]
+        return hmac.compare_digest(sig, expect)
 
     # ---------- storage ----------
 
@@ -52,14 +91,18 @@ class Auth:
         TOKENS.write_text(json.dumps(self._tokens, indent=2), encoding="utf-8")
 
     def forget_all(self):
-        self._tokens = {}
+        """Drop every device. Also rotates the signing key, so tokens issued
+        earlier stop working even though validation is stateless."""
+        self._tokens = {"_secret": secrets.token_urlsafe(32)}
         self._save()
+        self._secret = self._server_secret()
 
     @property
     def devices(self) -> list[dict]:
         return [
             {"name": v.get("name", "device"), "paired": v.get("paired", 0)}
-            for v in self._tokens.values()
+            for k, v in self._tokens.items()
+            if k != "_secret" and isinstance(v, dict)
         ]
 
     # ---------- checks ----------
@@ -70,7 +113,9 @@ class Auth:
     def ok(self, token: str | None, client_host: str | None) -> bool:
         if not self.required or self.is_local(client_host):
             return True
-        return bool(token) and token in self._tokens
+        if not token:
+            return False
+        return self._signature_ok(token) or token in self._tokens
 
     def pair(self, pin: str, client_host: str | None, name: str = "phone") -> str | None:
         """Exchange the PIN for a token, with a crude brute-force brake."""
@@ -83,7 +128,10 @@ class Auth:
             recent.append(now)
             return None
 
-        token = secrets.token_urlsafe(24)
+        token = self._sign(f"{name}:{int(now)}")
         self._tokens[token] = {"name": name, "paired": int(now), "host": client_host}
-        self._save()
+        try:
+            self._save()          # only for the device list; validation is stateless
+        except OSError:
+            pass                  # read-only filesystem on some hosts
         return token
