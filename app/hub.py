@@ -187,8 +187,14 @@ class Hub:
             return False
         with self._count_lock:
             if self._pending > 0:
-                return False
+                return False        # still transcribing what was said
             quiet_for = time.monotonic() - self._last_audio
+
+        # You tapped stop, so there is nothing left to wait for. Waiting out the
+        # end-of-turn silence here just adds a second and a half to every answer.
+        if self.remote is not None and self.remote.finished:
+            return True
+
         if self.segmenter is not None and self.segmenter.speaking:
             return False        # they have already started talking again
         return quiet_for >= self.cfg.trigger.end_of_turn_s
@@ -209,6 +215,8 @@ class Hub:
     async def _finish_turn(self):
         text = " ".join(self._turn).strip()
         self._turn, self._turn_ids = [], []
+        if self.remote is not None:
+            self.remote.finished = False      # consumed
         if not text:
             return
 

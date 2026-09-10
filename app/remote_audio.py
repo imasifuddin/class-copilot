@@ -38,6 +38,7 @@ class RemoteAudio:
         self.bytes_in = 0
         self.force = False        # "answer whatever you hear" (push to listen)
         self.open_session = False
+        self.finished = False     # you tapped stop, so there is nothing to wait for
         self._tail = b""
 
     # ---------- state ----------
@@ -60,6 +61,7 @@ class RemoteAudio:
 
     def begin(self, device: str, intent: str = ""):
         self.open_session = True
+        self.finished = False
         self.device = device or "phone"
         self.force = intent == "ask"
         self.last_seen = time.time()
@@ -71,6 +73,7 @@ class RemoteAudio:
         if not self.open_session:
             return          # already closed; a duplicate stop is harmless
         self.open_session = False
+        self.finished = True
         self.last_seen = time.time()
         # Close off a half-finished sentence rather than leaving it hanging.
         sink = getattr(self.hub, "audio_sink", None)
